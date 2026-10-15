@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from mdlite.wrap_parallel import wrap_inplace
+
 
 @dataclass
 class System:
@@ -32,7 +34,7 @@ class System:
 
     def wrap(self) -> None:
         """Wrap positions back into the periodic box [0, L)."""
-        self.positions %= self.box
+        wrap_inplace(self.positions, float(self.box))
 
 
 def fcc_lattice(n_cells: int, density: float):

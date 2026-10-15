@@ -1,5 +1,7 @@
 # mdlite
 
+![CI](https://github.com/dmatharv25-cmd/mdlite/actions/workflows/ci.yml/badge.svg)
+
 A small Lennard-Jones molecular dynamics code in Python, built step by step from a plain NumPy baseline up to a parallel Numba implementation. Each optimization is benchmarked and tested against the previous one.
 
 ## Features

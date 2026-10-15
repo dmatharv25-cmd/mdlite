@@ -8,6 +8,7 @@ import math
 
 import numpy as np
 from mdlite.cells import build_pairs_cells, n_cells_per_dim
+from mdlite.forces_parallel import forces_from_pairs_parallel
 from numba import njit
 
 
@@ -101,9 +102,10 @@ class VerletListForces:
     Holds the neighbor list as state, so create one instance per simulation.
     """
 
-    def __init__(self, skin: float = 0.3, use_cells: bool = True):
+    def __init__(self, skin: float = 0.3, use_cells: bool = True, parallel: bool = False):
         self.skin = float(skin)
         self.use_cells = bool(use_cells)
+        self.parallel = bool(parallel)
         self.pair_i = None
         self.pair_j = None
         self._ref = None
@@ -138,5 +140,8 @@ class VerletListForces:
             raise ValueError("box must be at least 2 * (r_cut + skin) for the minimum image convention")
         if self._needs_rebuild(pos, box, r_cut):
             self._build(pos, box, r_cut)
-        forces, pot, vir = _forces_from_pairs(pos, box, r_cut, self.pair_i, self.pair_j)
+        if self.parallel:
+            forces, pot, vir = forces_from_pairs_parallel(pos, box, r_cut, self.pair_i, self.pair_j)
+        else:
+            forces, pot, vir = _forces_from_pairs(pos, box, r_cut, self.pair_i, self.pair_j)
         return forces, float(pot), float(vir)

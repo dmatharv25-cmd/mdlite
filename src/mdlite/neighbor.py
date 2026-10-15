@@ -103,7 +103,7 @@ class VerletListForces:
     Holds the neighbor list as state, so create one instance per simulation.
     """
 
-    def __init__(self, skin: float = 0.3, use_cells: bool = True, parallel: bool = False):
+    def __init__(self, skin: float = 0.5, use_cells: bool = True, parallel: bool = False):
         self.skin = float(skin)
         self.use_cells = bool(use_cells)
         self.parallel = bool(parallel)

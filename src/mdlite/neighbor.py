@@ -10,6 +10,7 @@ import numpy as np
 from mdlite.cells import build_pairs_cells, n_cells_per_dim
 from mdlite.forces_parallel import forces_from_pairs_parallel
 from mdlite.cells_parallel import build_pairs_cells_parallel
+from mdlite.integrate_parallel import max_displacement2_parallel
 from numba import njit
 
 
@@ -120,7 +121,11 @@ class VerletListForces:
         if box != self._box or r_cut != self._r_cut:
             return True
         half_skin = 0.5 * self.skin
-        return _max_displacement2(pos, self._ref, box) > half_skin * half_skin
+        if self.parallel:
+            disp2 = max_displacement2_parallel(pos, self._ref, box)
+        else:
+            disp2 = _max_displacement2(pos, self._ref, box)
+        return disp2 > half_skin * half_skin
 
     def _build(self, pos, box, r_cut):
         r_list = r_cut + self.skin

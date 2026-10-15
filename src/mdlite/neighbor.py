@@ -7,6 +7,7 @@ which guarantees no pair can enter the cutoff sphere without being in the list.
 import math
 
 import numpy as np
+from mdlite.cells import build_pairs_cells, n_cells_per_dim
 from numba import njit
 
 
@@ -100,8 +101,9 @@ class VerletListForces:
     Holds the neighbor list as state, so create one instance per simulation.
     """
 
-    def __init__(self, skin: float = 0.3):
+    def __init__(self, skin: float = 0.3, use_cells: bool = True):
         self.skin = float(skin)
+        self.use_cells = bool(use_cells)
         self.pair_i = None
         self.pair_j = None
         self._ref = None
@@ -118,7 +120,11 @@ class VerletListForces:
         return _max_displacement2(pos, self._ref, box) > half_skin * half_skin
 
     def _build(self, pos, box, r_cut):
-        self.pair_i, self.pair_j = _build_pairs(pos, box, r_cut + self.skin)
+        r_list = r_cut + self.skin
+        if self.use_cells and n_cells_per_dim(box, r_list) >= 3:
+            self.pair_i, self.pair_j = build_pairs_cells(pos, box, r_list)
+        else:
+            self.pair_i, self.pair_j = _build_pairs(pos, box, r_list)
         self._ref = pos.copy()
         self._box = box
         self._r_cut = r_cut

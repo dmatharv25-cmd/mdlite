@@ -10,7 +10,7 @@ from mdlite.system import create_fcc_system
 
 s = create_fcc_system(22, 0.8, 1.0, seed=1)
 fn = VerletListForces(0.5, use_cells=True, parallel=True)
-run_nve(s, 20 0.005, force_fn=fn)
+run_nve(s, 200, 0.005, force_fn=fn)
 pos = np.ascontiguousarray(s.positions)
 box = float(s.box)
 pi, pj = fn.pair_i, fn.pair_j

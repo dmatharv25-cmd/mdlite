@@ -1,8 +1,11 @@
 """Parallel cell-list construction of the Verlet pair list.
 
 Atoms are sorted into cells (counting sort, O(N)) and positions are copied into cell
-order so the inner loops read contiguous memory. Two prange passes over cells then count
-and fill the pairs. Each atom owns a disjoint slice of the output, so there are no races.
+order so the inner loops read contiguous memory. Each cell is compared with itself
+(later atoms only) and with its 13 "forward" neighbor cells, so every pair is visited
+exactly once. Two prange passes over cells count and then fill the pairs. Each atom
+owns a disjoint slice of the output, so there are no races. Pairs are returned with
+i < j. This needs at least 3 cells per dimension so the 26 neighbors are all distinct.
 """
 
 import math
@@ -56,26 +59,40 @@ def _pairs_kernel(pos, box, r_list, nc):
         cx = c // (nc * nc)
         cy = (c // nc) % nc
         cz = c % nc
-        for a in range(start[c], start[c + 1]):
-            oa = order[a]
+        nbr = np.empty(13, np.int64)
+        m = 0
+        for ox in range(-1, 2):
+            for oy in range(-1, 2):
+                for oz in range(-1, 2):
+                    if ox > 0 or (ox == 0 and (oy > 0 or (oy == 0 and oz > 0))):
+                        nbr[m] = (((cx + ox) % nc) * nc + (cy + oy) % nc) * nc + (cz + oz) % nc
+                        m += 1
+        cend = start[c + 1]
+        for a in range(start[c], cend):
             xa = spos[a, 0]
             ya = spos[a, 1]
             za = spos[a, 2]
             cnt = 0
-            for ox in range(-1, 2):
-                for oy in range(-1, 2):
-                    for oz in range(-1, 2):
-                        c2 = (((cx + ox) % nc) * nc + (cy + oy) % nc) * nc + (cz + oz) % nc
-                        for b in range(start[c2], start[c2 + 1]):
-                            if order[b] > oa:
-                                dx = xa - spos[b, 0]
-                                dy = ya - spos[b, 1]
-                                dz = za - spos[b, 2]
-                                dx -= box * math.floor(dx / box + 0.5)
-                                dy -= box * math.floor(dy / box + 0.5)
-                                dz -= box * math.floor(dz / box + 0.5)
-                                if dx * dx + dy * dy + dz * dz < rl2:
-                                    cnt += 1
+            for b in range(a + 1, cend):
+                dx = xa - spos[b, 0]
+                dy = ya - spos[b, 1]
+                dz = za - spos[b, 2]
+                dx -= box * math.floor(dx / box + 0.5)
+                dy -= box * math.floor(dy / box + 0.5)
+                dz -= box * math.floor(dz / box + 0.5)
+                if dx * dx + dy * dy + dz * dz < rl2:
+                    cnt += 1
+            for q in range(13):
+                c2 = nbr[q]
+                for b in range(start[c2], start[c2 + 1]):
+                    dx = xa - spos[b, 0]
+                    dy = ya - spos[b, 1]
+                    dz = za - spos[b, 2]
+                    dx -= box * math.floor(dx / box + 0.5)
+                    dy -= box * math.floor(dy / box + 0.5)
+                    dz -= box * math.floor(dz / box + 0.5)
+                    if dx * dx + dy * dy + dz * dz < rl2:
+                        cnt += 1
             counts[a] = cnt
 
     offsets = np.zeros(n + 1, np.int64)
@@ -89,28 +106,55 @@ def _pairs_kernel(pos, box, r_list, nc):
         cx = c // (nc * nc)
         cy = (c // nc) % nc
         cz = c % nc
-        for a in range(start[c], start[c + 1]):
+        nbr = np.empty(13, np.int64)
+        m = 0
+        for ox in range(-1, 2):
+            for oy in range(-1, 2):
+                for oz in range(-1, 2):
+                    if ox > 0 or (ox == 0 and (oy > 0 or (oy == 0 and oz > 0))):
+                        nbr[m] = (((cx + ox) % nc) * nc + (cy + oy) % nc) * nc + (cz + oz) % nc
+                        m += 1
+        cend = start[c + 1]
+        for a in range(start[c], cend):
             oa = order[a]
             xa = spos[a, 0]
             ya = spos[a, 1]
             za = spos[a, 2]
             k = offsets[a]
-            for ox in range(-1, 2):
-                for oy in range(-1, 2):
-                    for oz in range(-1, 2):
-                        c2 = (((cx + ox) % nc) * nc + (cy + oy) % nc) * nc + (cz + oz) % nc
-                        for b in range(start[c2], start[c2 + 1]):
-                            if order[b] > oa:
-                                dx = xa - spos[b, 0]
-                                dy = ya - spos[b, 1]
-                                dz = za - spos[b, 2]
-                                dx -= box * math.floor(dx / box + 0.5)
-                                dy -= box * math.floor(dy / box + 0.5)
-                                dz -= box * math.floor(dz / box + 0.5)
-                                if dx * dx + dy * dy + dz * dz < rl2:
-                                    pair_i[k] = oa
-                                    pair_j[k] = order[b]
-                                    k += 1
+            for b in range(a + 1, cend):
+                dx = xa - spos[b, 0]
+                dy = ya - spos[b, 1]
+                dz = za - spos[b, 2]
+                dx -= box * math.floor(dx / box + 0.5)
+                dy -= box * math.floor(dy / box + 0.5)
+                dz -= box * math.floor(dz / box + 0.5)
+                if dx * dx + dy * dy + dz * dz < rl2:
+                    ob = order[b]
+                    if oa < ob:
+                        pair_i[k] = oa
+                        pair_j[k] = ob
+                    else:
+                        pair_i[k] = ob
+                        pair_j[k] = oa
+                    k += 1
+            for q in range(13):
+                c2 = nbr[q]
+                for b in range(start[c2], start[c2 + 1]):
+                    dx = xa - spos[b, 0]
+                    dy = ya - spos[b, 1]
+                    dz = za - spos[b, 2]
+                    dx -= box * math.floor(dx / box + 0.5)
+                    dy -= box * math.floor(dy / box + 0.5)
+                    dz -= box * math.floor(dz / box + 0.5)
+                    if dx * dx + dy * dy + dz * dz < rl2:
+                        ob = order[b]
+                        if oa < ob:
+                            pair_i[k] = oa
+                            pair_j[k] = ob
+                        else:
+                            pair_i[k] = ob
+                            pair_j[k] = oa
+                        k += 1
     return pair_i, pair_j
 
 

@@ -9,6 +9,7 @@ import math
 import numpy as np
 from mdlite.cells import build_pairs_cells, n_cells_per_dim
 from mdlite.forces_parallel import forces_from_pairs_parallel
+from mdlite.cells_parallel import build_pairs_cells_parallel
 from numba import njit
 
 
@@ -124,7 +125,10 @@ class VerletListForces:
     def _build(self, pos, box, r_cut):
         r_list = r_cut + self.skin
         if self.use_cells and n_cells_per_dim(box, r_list) >= 3:
-            self.pair_i, self.pair_j = build_pairs_cells(pos, box, r_list)
+            if self.parallel:
+                self.pair_i, self.pair_j = build_pairs_cells_parallel(pos, box, r_list)
+            else:
+                self.pair_i, self.pair_j = build_pairs_cells(pos, box, r_list)
         else:
             self.pair_i, self.pair_j = _build_pairs(pos, box, r_list)
         self._ref = pos.copy()

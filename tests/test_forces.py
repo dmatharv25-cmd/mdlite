@@ -39,3 +39,13 @@ def test_perfect_fcc_lattice_has_zero_net_force_on_each_atom():
     s = create_fcc_system(3, density=0.8, temperature=1.0, seed=3)
     f, _, _ = compute_forces_brute(s.positions, s.box)
     assert np.allclose(f, 0.0, atol=1e-9)  # symmetry
+
+
+def test_virial_is_finite_and_matches_two_particle_analytic_value():
+    # For one pair at separation r: virial = r . f = 24 (2 r^-12 - r^-6)
+    r = 1.1
+    pos = np.array([[1.0, 1.0, 1.0], [1.0 + r, 1.0, 1.0]])
+    _, _, w = compute_forces_brute(pos, box=10.0)
+    expected = 24.0 * (2.0 * r ** -12 - r ** -6)
+    assert np.isfinite(w)
+    assert np.isclose(w, expected)

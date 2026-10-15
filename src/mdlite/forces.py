@@ -35,5 +35,6 @@ def compute_forces_brute(positions: np.ndarray, box: float, r_cut: float = 2.5):
     shift = lj_shift(r_cut)
     pair_u = np.where(mask, 4.0 * (inv_r12 - inv_r6) - shift, 0.0)
     potential = 0.5 * np.sum(pair_u)                     # each pair counted twice
-    virial = 0.5 * np.sum(f_over_r * r2 * mask)          # sum_pairs r . f
+    virial = 0.5 * np.sum(f_over_r * np.where(mask, r2, 0.0))          # sum_pairs r . f
     return forces, float(potential), float(virial)
+

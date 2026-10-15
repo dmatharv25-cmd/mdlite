@@ -38,6 +38,27 @@ The full script is `examples/nve_energy.py`. It runs a Lennard-Jones liquid and 
 
 ![NVE energy](examples/nve_energy.png)
 
+## Running the parallel version
+
+The fast path uses the cell-list neighbor build and the parallel force kernel. Pass a `VerletListForces` object with `parallel=True` to `run_nve`:
+
+```python
+import numba
+from mdlite.integrators import run_nve
+from mdlite.neighbor import VerletListForces
+from mdlite.system import create_fcc_system
+
+system = create_fcc_system(10, density=0.8, temperature=1.0, seed=1)
+force_fn = VerletListForces(0.3, use_cells=True, parallel=True)
+
+# optional: limit the number of threads (default is all cores)
+# numba.set_num_threads(4)
+
+run_nve(system, n_steps=100, dt=0.005, force_fn=force_fn)
+print("ok, N =", system.n_particles)
+```
+
+The first call is slow because Numba compiles the kernels (results are cached afterwards). To compare against the serial version, set `parallel=False`. `benchmarks/bench_parallel.py` does exactly that and also measures thread scaling.
 ## Benchmarks
 
 All timings were measured on a single development machine, so absolute numbers will differ on yours. The raw data is in `benchmarks/`.

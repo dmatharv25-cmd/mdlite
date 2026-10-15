@@ -5,12 +5,13 @@ own (n, 3) buffer, so threads never write to the same memory. A second parallel 
 over atoms then sums the buffers.
 
 The buffers are cached between calls (reallocated only when n or nchunks changes) and
-each thread zeroes its own slice inside the parallel loop. This avoids a large
-allocation plus page faults on every step. The cache is shared module state, so the
-kernel must not be called from several Python threads at the same time.
-"""
+each thread zeroes its own slice inside the parallel loop. The cache is shared module
+state, so the kernel must not be called from several Python threads at the same time.
 
-import math
+The minimum image uses comparisons instead of divide + floor. This requires positions
+to be wrapped into the box (all coordinate differences within +-1.5 box), which the
+integrator guarantees by calling wrap() every step.
+"""
 
 import numba
 import numpy as np
@@ -24,6 +25,7 @@ def _kernel(pos, box, r_cut, pair_i, pair_j, nchunks, buf):
     n = pos.shape[0]
     m = pair_i.shape[0]
     rc2 = r_cut * r_cut
+    hb = 0.5 * box
     inv6c = 1.0 / (rc2 * rc2 * rc2)
     shift = 4.0 * (inv6c * inv6c - inv6c)
     pots = np.zeros(nchunks)
@@ -43,9 +45,18 @@ def _kernel(pos, box, r_cut, pair_i, pair_j, nchunks, buf):
             dx = pos[i, 0] - pos[j, 0]
             dy = pos[i, 1] - pos[j, 1]
             dz = pos[i, 2] - pos[j, 2]
-            dx -= box * math.floor(dx / box + 0.5)
-            dy -= box * math.floor(dy / box + 0.5)
-            dz -= box * math.floor(dz / box + 0.5)
+            if dx > hb:
+                dx -= box
+            elif dx < -hb:
+                dx += box
+            if dy > hb:
+                dy -= box
+            elif dy < -hb:
+                dy += box
+            if dz > hb:
+                dz -= box
+            elif dz < -hb:
+                dz += box
             r2 = dx * dx + dy * dy + dz * dz
             if r2 < rc2:
                 inv2 = 1.0 / r2

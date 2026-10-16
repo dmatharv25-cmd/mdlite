@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mdlite live: Lennard-Jones liquid in your browser</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#16212c;--mute:#5b6b7a;--line:#d3dae1;--cool:#1d6fa5;--warm:#d4501e;--acc:#0b7285;color-scheme:light;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1720;--panel:#16212c;--ink:#e6edf3;--mute:#8da0b2;--line:#27384a;--cool:#5aa9dd;--warm:#f08a5d;--acc:#4cc2d6;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1720;--panel:#16212c;--ink:#e6edf3;--mute:#8da0b2;--line:#27384a;--cool:#5aa9dd;--warm:#f08a5d;--acc:#4cc2d6;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 "Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 18px 40px}
+h1{font-size:clamp(1.6rem,4vw,2.3rem);line-height:1.1;margin:0 0 8px;font-weight:700;letter-spacing:-.02em}
+.lede{color:var(--mute);margin:0 0 22px;max-width:62ch}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+canvas{display:block;width:100%;border-radius:6px}
+#view{aspect-ratio:1/1}
+.reads{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.reads div{border-left:3px solid var(--line);padding-left:9px}
+.reads b{display:block;font-size:1.35rem;font-variant-numeric:tabular-nums;font-weight:600}
+.reads span{font-size:.8rem;color:var(--mute)}
+label{display:flex;justify-content:space-between;font-size:.9rem;margin:12px 0 2px;font-weight:600}
+label em{font-style:normal;font-weight:400;color:var(--acc);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.row{display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--acc)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.chk{font-weight:400;font-size:.9rem;display:flex;gap:6px;align-items:center;margin:0}
+h2{font-size:1rem;margin:0 0 2px}
+.cap{font-size:.82rem;color:var(--mute);margin:0 0 8px}
+.k{display:inline-block;width:10px;height:3px;margin:0 4px 2px 8px;vertical-align:middle}
+.plots{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media(max-width:760px){.plots{grid-template-columns:1fr}}
+.plots canvas{height:170px}
+.note{font-size:.84rem;color:var(--mute);margin-top:20px;max-width:75ch}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+<h1>A Lennard-Jones liquid, live</h1>
+<p class="lede">256 atoms interact through the Lennard-Jones potential and move by velocity Verlet, the same scheme as mdlite. Squeeze the box, heat it, and watch gas, liquid and crystal-like order appear.</p>
+<div class="grid">
+  <div class="panel"><canvas id="view" aria-label="3D view of the particles"></canvas></div>
+  <div class="panel">
+    <div class="reads">
+      <div><b id="rT">-</b><span>temperature T*</span></div>
+      <div><b id="rP">-</b><span>pressure p*</span></div>
+      <div><b id="rU">-</b><span>potential U/N</span></div>
+      <div><b id="rE">-</b><span>total E/N</span></div>
+      <div><b id="rD">-</b><span>energy drift</span></div>
+      <div><b id="rS">-</b><span>steps</span></div>
+    </div>
+    <label for="rho">Density &rho;* <em id="rhoV"></em></label>
+    <input id="rho" type="range" min="0.30" max="1.00" step="0.01" value="0.84">
+    <label for="tt">Target temperature <em id="ttV"></em></label>
+    <input id="tt" type="range" min="0.30" max="2.50" step="0.05" value="0.85">
+    <div class="row">
+      <label class="chk"><input id="th" type="checkbox"> Thermostat on (off = pure NVE)</label>
+    </div>
+    <div class="row">
+      <button id="pp">Pause</button><button id="rs">Restart</button>
+    </div>
+    <p class="cap" style="margin-top:14px">Atoms are colored by speed: blue is slow, orange is fast. With the thermostat off, total energy should stay flat while kinetic and potential trade places.</p>
+  </div>
+</div>
+<div class="plots">
+  <div class="panel"><h2>Energy per particle</h2><p class="cap"><span class="k" style="background:var(--warm);margin-left:0"></span>kinetic<span class="k" style="background:var(--cool)"></span>potential<span class="k" style="background:var(--ink)"></span>total</p><canvas id="en"></canvas></div>
+  <div class="panel"><h2>Pair distribution g(r)</h2><p class="cap">Peaks at neighbor distances show structure. Averaged since the last density change.</p><canvas id="gr"></canvas></div>
+</div>
+<p class="note">This page is a JavaScript port of the algorithm, using brute-force pair loops and reduced units (&sigma; = &epsilon; = m = 1, dt = 0.004, cutoff 2.5&sigma;, shifted potential, no long-range correction), so it runs without Python. The Python and Numba engine in <a href="https://github.com/dmatharv25-cmd/mdlite">the mdlite repository</a> is the code validated against NIST reference data.</p>
+</main>
+<script>
+const N=256,NC=4,DT=0.004,RC2=6.25,RC=2.5,NB=60;
+const ECUT=4*(Math.pow(RC,-12)-Math.pow(RC,-6));
+const x=new Float64Array(N),y=new Float64Array(N),z=new Float64Array(N);
+const vx=new Float64Array(N),vy=new Float64Array(N),vz=new Float64Array(N);
+const fx=new Float64Array(N),fy=new Float64Array(N),fz=new Float64Array(N);
+let L,rho=0.84,pe=0,vir=0,steps=0,E0=null,hist=new Float64Array(NB),nh=0,paused=false,ang=0.6;
+let hK=[],hU=[],hE=[],frame=0;
+const $=id=>document.getElementById(id);
+function gauss(){return Math.sqrt(-2*Math.log(1-Math.random()))*Math.cos(6.2831853*Math.random())}
+function init(){
+  L=Math.cbrt(N/rho);const a=L/NC,b=[[0,0,0],[.5,.5,0],[.5,0,.5],[0,.5,.5]];let k=0;
+  for(let i=0;i<NC;i++)for(let j=0;j<NC;j++)for(let l=0;l<NC;l++)for(const o of b){x[k]=(i+o[0]+.25)*a;y[k]=(j+o[1]+.25)*a;z[k]=(l+o[2]+.25)*a;k++}
+  let sx=0,sy=0,sz=0;
+  for(let i=0;i<N;i++){vx[i]=gauss();vy[i]=gauss();vz[i]=gauss();sx+=vx[i];sy+=vy[i];sz+=vz[i]}
+  for(let i=0;i<N;i++){vx[i]-=sx/N;vy[i]-=sy/N;vz[i]-=sz/N}
+  setT(1.6);force(false);steps=0;E0=null;resetStats();hK=[];hU=[];hE=[];
+}
+function kin(){let s=0;for(let i=0;i<N;i++)s+=vx[i]*vx[i]+vy[i]*vy[i]+vz[i]*vz[i];return .5*s}
+function temp(){return 2*kin()/(3*(N-1))}
+function setT(T){const f=Math.sqrt(T/temp());for(let i=0;i<N;i++){vx[i]*=f;vy[i]*=f;vz[i]*=f}}
+function resetStats(){hist.fill(0);nh=0;E0=null}
+function force(sample){
+  fx.fill(0);fy.fill(0);fz.fill(0);pe=0;vir=0;const dr=RC/NB,h=L/2;
+  for(let i=0;i<N-1;i++){const xi=x[i],yi=y[i],zi=z[i];
+    for(let j=i+1;j<N;j++){
+      let dx=xi-x[j],dy=yi-y[j],dz=zi-z[j];
+      if(dx>h)dx-=L;else if(dx<-h)dx+=L;if(dy>h)dy-=L;else if(dy<-h)dy+=L;if(dz>h)dz-=L;else if(dz<-h)dz+=L;
+      const r2=dx*dx+dy*dy+dz*dz;
+      if(r2<RC2){const i2=1/r2,i6=i2*i2*i2,ff=24*i2*i6*(2*i6-1);
+        pe+=4*i6*(i6-1)-ECUT;vir+=ff*r2;
+        fx[i]+=ff*dx;fy[i]+=ff*dy;fz[i]+=ff*dz;fx[j]-=ff*dx;fy[j]-=ff*dy;fz[j]-=ff*dz;
+        if(sample)hist[Math.min(NB-1,(Math.sqrt(r2)/dr)|0)]++;}
+    }}
+}
+function step(sample){
+  const hd=.5*DT;
+  for(let i=0;i<N;i++){vx[i]+=hd*fx[i];vy[i]+=hd*fy[i];vz[i]+=hd*fz[i];
+    x[i]+=DT*vx[i];y[i]+=DT*vy[i];z[i]+=DT*vz[i];
+    x[i]-=L*Math.floor(x[i]/L);y[i]-=L*Math.floor(y[i]/L);z[i]-=L*Math.floor(z[i]/L)}
+  force(sample);
+  for(let i=0;i<N;i++){vx[i]+=hd*fx[i];vy[i]+=hd*fy[i];vz[i]+=hd*fz[i]}
+  if($("th").checked){const f=Math.sqrt(1+.02*(+$("tt").value/temp()-1));
+    for(let i=0;i<N;i++){vx[i]*=f;vy[i]*=f;vz[i]*=f}}
+  steps++;
+}
+function fit(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1;
+  if(c.width!==Math.round(r.width*d)||c.height!==Math.round(r.height*d)){c.width=Math.round(r.width*d);c.height=Math.round(r.height*d)}
+  return d}
+const cs=()=>getComputedStyle(document.documentElement);
+function drawView(){
+  const c=$("view"),g=c.getContext("2d");fit(c);const W=c.width,H=c.height,S=cs();
+  g.clearRect(0,0,W,H);
+  const s=W/(L*1.75),D=2.4*L,ca=Math.cos(ang),sa=Math.sin(ang),tl=.35,ct=Math.cos(tl),st=Math.sin(tl);
+  function proj(px,py,pz){px-=L/2;py-=L/2;pz-=L/2;
+    const rx=px*ca+pz*sa,rz=-px*sa+pz*ca,ry=py*ct-rz*st,rz2=py*st+rz*ct,p=D/(D-rz2);
+    return [W/2+rx*s*p,H/2+ry*s*p,p,rz2]}
+  const e=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]].map(v=>proj(v[0]*L,v[1]*L,v[2]*L));
+  g.strokeStyle=S.getPropertyValue("--line");g.lineWidth=1.2;g.beginPath();
+  for(const [a,b] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]){g.moveTo(e[a][0],e[a][1]);g.lineTo(e[b][0],e[b][1])}
+  g.stroke();
+  const pts=[];
+  for(let i=0;i<N;i++){const q=proj(x[i],y[i],z[i]);q.push(Math.sqrt(vx[i]*vx[i]+vy[i]*vy[i]+vz[i]*vz[i]));pts.push(q)}
+  pts.sort((a,b)=>a[3]-b[3]);
+  const dark=S.getPropertyValue("color-scheme").trim()==="dark";
+  for(const q of pts){const t=Math.min(1,q[4]/(2.2*Math.sqrt(Math.max(.2,temp()/1.0))));
+    g.fillStyle=`hsl(${210-t*190},${dark?70:75}%,${dark?58:46}%)`;
+    g.beginPath();g.arc(q[0],q[1],.5*s*q[2]*.95,0,6.2832);g.fill()}
+}
+function drawEnergy(){
+  const c=$("en"),g=c.getContext("2d"),d=fit(c),W=c.width,H=c.height,S=cs();
+  g.clearRect(0,0,W,H);if(hE.length<2)return;
+  const all=hK.concat(hU,hE);let lo=Math.min(...all),hi=Math.max(...all);const pad=(hi-lo)*.08||.1;lo-=pad;hi+=pad;
+  const m=34*d;g.font=`${11*d}px sans-serif`;g.fillStyle=S.getPropertyValue("--mute");g.strokeStyle=S.getPropertyValue("--line");g.lineWidth=1;
+  for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,yy=H-6*d-(H-12*d)*i/3;g.beginPath();g.moveTo(m,yy);g.lineTo(W,yy);g.stroke();g.fillText(v.toFixed(1),0,yy+4*d)}
+  const line=(a,col)=>{g.strokeStyle=S.getPropertyValue(col);g.lineWidth=2*d;g.beginPath();
+    a.forEach((v,i)=>{const px=m+(W-m)*i/(a.length-1),py=H-6*d-(H-12*d)*(v-lo)/(hi-lo);i?g.lineTo(px,py):g.moveTo(px,py)});g.stroke()};
+  line(hK,"--warm");line(hU,"--cool");line(hE,"--ink");
+}
+function drawGr(){
+  const c=$("gr"),g=c.getContext("2d"),d=fit(c),W=c.width,H=c.height,S=cs();
+  g.clearRect(0,0,W,H);if(nh<1)return;
+  const dr=RC/NB,gv=[];let hi=1.5;
+  for(let i=0;i<NB;i++){const r1=i*dr,r2=r1+dr,sh=4/3*Math.PI*(r2**3-r1**3);const v=2*hist[i]/(nh*N*(N/(L**3))*sh);gv.push(v);if(v>hi)hi=v}
+  hi=Math.min(hi*1.08,6);const m=30*d;
+  g.font=`${11*d}px sans-serif`;g.fillStyle=S.getPropertyValue("--mute");g.strokeStyle=S.getPropertyValue("--line");g.lineWidth=1;
+  const y1=H-6*d-(H-12*d)/hi;g.beginPath();g.moveTo(m,y1);g.lineTo(W,y1);g.stroke();g.fillText("1",8*d,y1+4*d);
+  g.fillText("0.0",m,H);g.fillText("r = 2.5",W-48*d,H);
+  g.strokeStyle=S.getPropertyValue("--acc");g.lineWidth=2*d;g.beginPath();
+  gv.forEach((v,i)=>{const px=m+(W-m)*(i+.5)/NB,py=H-6*d-(H-12*d)*Math.min(v,hi)/hi;i?g.lineTo(px,py):g.moveTo(px,py)});g.stroke();
+}
+function readouts(){
+  const K=kin(),T=temp(),V=L**3,P=(2*K+vir)/(3*V),E=(K+pe)/N;
+  if(E0===null)E0=E;
+  $("rT").textContent=T.toFixed(3);$("rP").textContent=P.toFixed(2);
+  $("rU").textContent=(pe/N).toFixed(3);$("rE").textContent=E.toFixed(3);
+  $("rD").textContent=$("th").checked?"thermostat":(((E-E0)/Math.abs(E0))*100).toFixed(3)+"%";
+  $("rS").textContent=steps.toLocaleString();
+  return [K/N,pe/N,E];
+}
+function loop(){
+  if(!paused){
+    for(let s=0;s<6;s++)step(s===5&&frame%4===0);
+    if(frame%4===0)nh++;
+    ang+=.004;frame++;
+    const r=readouts();
+    if(frame%3===0){hK.push(r[0]);hU.push(r[1]);hE.push(r[2]);if(hE.length>240){hK.shift();hU.shift();hE.shift()}}
+  }
+  drawView();drawEnergy();drawGr();
+  requestAnimationFrame(loop);
+}
+$("rho").oninput=e=>{const nr=+e.target.value,nl=Math.cbrt(N/nr),f=nl/L;
+  for(let i=0;i<N;i++){x[i]*=f;y[i]*=f;z[i]*=f}L=nl;rho=nr;force(false);resetStats();$("rhoV").textContent=nr.toFixed(2)};
+$("tt").oninput=e=>{$("ttV").textContent=(+e.target.value).toFixed(2);if($("th").checked)E0=null};
+$("th").onchange=()=>{E0=null};
+$("pp").onclick=()=>{paused=!paused;$("pp").textContent=paused?"Resume":"Pause"};
+$("rs").onclick=()=>{rho=+$("rho").value;init()};
+$("rhoV").textContent="0.84";$("ttV").textContent="0.85";
+init();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
